@@ -1,0 +1,337 @@
+// Real API Service - Connects to Laravel Backend
+import axios from 'axios';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Add token to every request
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('authToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Handle response errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+    console.error('API Error:', error.response?.data || error.message);
+    return Promise.reject(error);
+  }
+);
+
+// Auth API
+export const authAPI = {
+  login: async (username, password) => {
+    await delay(500);
+    const user = users.find(u => u.username === username && u.password === password);
+    if (user) {
+      const { password: _, ...userWithoutPassword } = user;
+      return { success: true, user: userWithoutPassword };
+    }
+    return { success: false, error: 'Invalid credentials' };
+  },
+  logout: async () => {
+    await delay(200);
+    resetAllData();
+    return { success: true };
+  }
+};
+
+// Store Managers API (Admin)
+export const storeManagersAPI = {
+  getAll: async () => {
+    await delay(300);
+    return [...storeManagers];
+  },
+  getById: async (id) => {
+    await delay(200);
+    return storeManagers.find(m => m.id === id);
+  },
+  add: async (manager) => {
+    await delay(300);
+    const newManager = { ...manager, id: Math.max(...storeManagers.map(m => m.id)) + 1 };
+    storeManagers.push(newManager);
+    return newManager;
+  },
+  update: async (id, data) => {
+    await delay(300);
+    const index = storeManagers.findIndex(m => m.id === id);
+    if (index !== -1) {
+      storeManagers[index] = { ...storeManagers[index], ...data };
+      return storeManagers[index];
+    }
+    return null;
+  },
+  delete: async (id) => {
+    await delay(300);
+    storeManagers = storeManagers.filter(m => m.id !== id);
+    return { success: true };
+  }
+};
+
+// Stores API (Store Manager)
+export const storesAPI = {
+  getAll: async () => {
+    await delay(300);
+    return [...stores];
+  },
+  getById: async (id) => {
+    await delay(200);
+    return stores.find(s => s.id === id);
+  },
+  add: async (store) => {
+    await delay(300);
+    const newStore = { ...store, id: Math.max(...stores.map(s => s.id)) + 1 };
+    stores.push(newStore);
+    return newStore;
+  },
+  update: async (id, data) => {
+    await delay(300);
+    const index = stores.findIndex(s => s.id === id);
+    if (index !== -1) {
+      stores[index] = { ...stores[index], ...data };
+      return stores[index];
+    }
+    return null;
+  },
+  delete: async (id) => {
+    await delay(300);
+    stores = stores.filter(s => s.id !== id);
+    return { success: true };
+  }
+};
+
+// Products API
+export const productsAPI = {
+  getAll: async (storeId = null) => {
+    await delay(300);
+    if (storeId) {
+      return products.filter(p => p.storeId === storeId);
+    }
+    return [...products];
+  },
+  getById: async (id) => {
+    await delay(200);
+    return products.find(p => p.id === id);
+  },
+  search: async (query, storeId = null) => {
+    await delay(200);
+    let filtered = products.filter(p => 
+      p.name.toLowerCase().includes(query.toLowerCase()) ||
+      p.category.toLowerCase().includes(query.toLowerCase())
+    );
+    if (storeId) {
+      filtered = filtered.filter(p => p.storeId === storeId);
+    }
+    return filtered;
+  },
+  searchFromOtherBranch: async (query, currentStoreId) => {
+    await delay(300);
+    return products.filter(p => 
+      p.storeId !== currentStoreId &&
+      (p.name.toLowerCase().includes(query.toLowerCase()) ||
+       p.category.toLowerCase().includes(query.toLowerCase()))
+    );
+  },
+  add: async (product) => {
+    await delay(300);
+    const newProduct = { ...product, id: Math.max(...products.map(p => p.id)) + 1 };
+    products.push(newProduct);
+    return newProduct;
+  },
+  update: async (id, data) => {
+    await delay(300);
+    const index = products.findIndex(p => p.id === id);
+    if (index !== -1) {
+      products[index] = { ...products[index], ...data };
+      return products[index];
+    }
+    return null;
+  },
+  delete: async (id) => {
+    await delay(300);
+    products = products.filter(p => p.id !== id);
+    return { success: true };
+  },
+  getLowStock: async (storeId = null) => {
+    await delay(200);
+    let filtered = products.filter(p => p.stock <= p.minStock);
+    if (storeId) {
+      filtered = filtered.filter(p => p.storeId === storeId);
+    }
+    return filtered;
+  },
+  transferStock: async (productId, fromStoreId, toStoreId, quantity) => {
+    await delay(400);
+    const fromProduct = products.find(p => p.id === productId && p.storeId === fromStoreId);
+    if (!fromProduct || fromProduct.stock < quantity) {
+      return { success: false, error: 'Insufficient stock' };
+    }
+    
+    fromProduct.stock -= quantity;
+    
+    // Check if product exists in target store
+    let toProduct = products.find(p => p.name === fromProduct.name && p.storeId === toStoreId);
+    if (toProduct) {
+      toProduct.stock += quantity;
+    } else {
+      // Create new product in target store
+      const newProduct = {
+        ...fromProduct,
+        id: Math.max(...products.map(p => p.id)) + 1,
+        storeId: toStoreId,
+        stock: quantity
+      };
+      products.push(newProduct);
+    }
+    
+    return { success: true };
+  }
+};
+
+// Orders API
+export const ordersAPI = {
+  getAll: async (storeId = null) => {
+    await delay(300);
+    if (storeId) {
+      return orders.filter(o => o.storeId === storeId);
+    }
+    return [...orders];
+  },
+  getById: async (id) => {
+    await delay(200);
+    return orders.find(o => o.id === id);
+  },
+  add: async (order) => {
+    await delay(300);
+    const newOrder = { 
+      ...order, 
+      id: Math.max(...orders.map(o => o.id)) + 1,
+      date: new Date().toISOString().split('T')[0]
+    };
+    orders.push(newOrder);
+    
+    // Update stock
+    for (const item of order.items) {
+      const product = products.find(p => p.id === item.productId);
+      if (product) {
+        product.stock -= item.quantity;
+      }
+    }
+    
+    return newOrder;
+  },
+  update: async (id, data) => {
+    await delay(300);
+    const index = orders.findIndex(o => o.id === id);
+    if (index !== -1) {
+      orders[index] = { ...orders[index], ...data };
+      return orders[index];
+    }
+    return null;
+  },
+  delete: async (id) => {
+    await delay(300);
+    orders = orders.filter(o => o.id !== id);
+    return { success: true };
+  }
+};
+
+// Notifications API
+export const notificationsAPI = {
+  getAll: async (storeId = null) => {
+    await delay(200);
+    if (storeId) {
+      return notifications.filter(n => n.storeId === storeId || n.storeId === null);
+    }
+    return [...notifications];
+  },
+  markAsRead: async (id) => {
+    await delay(200);
+    const notification = notifications.find(n => n.id === id);
+    if (notification) {
+      notification.read = true;
+    }
+    return notification;
+  },
+  getUnreadCount: async (storeId = null) => {
+    await delay(100);
+    let filtered = notifications.filter(n => !n.read);
+    if (storeId) {
+      filtered = filtered.filter(n => n.storeId === storeId || n.storeId === null);
+    }
+    return filtered.length;
+  }
+};
+
+// Reports API
+export const reportsAPI = {
+  getSalesData: async () => {
+    await delay(300);
+    return [...salesData];
+  },
+  getCategoryData: async () => {
+    await delay(200);
+    return [...categoryData];
+  },
+  getDailySales: async () => {
+    await delay(200);
+    return [...dailySales];
+  },
+  getProfitLoss: async (storeId = null) => {
+    await delay(300);
+    const storeOrders = storeId 
+      ? orders.filter(o => o.storeId === storeId)
+      : orders;
+    
+    const totalRevenue = storeOrders.reduce((sum, o) => sum + o.total, 0);
+    const totalCost = totalRevenue * 0.6; // Assuming 40% margin
+    const profit = totalRevenue - totalCost;
+    
+    return {
+      revenue: totalRevenue,
+      cost: totalCost,
+      profit: profit,
+      profitMargin: ((profit / totalRevenue) * 100).toFixed(2),
+      orderCount: storeOrders.length
+    };
+  },
+  exportReport: async (type) => {
+    await delay(500);
+    // Simulate export - in real app would generate file
+    return { success: true, message: `${type} report exported successfully` };
+  }
+};
+
+// Stock API
+export const stockAPI = {
+  getStock: async (storeId = null) => {
+    await delay(300);
+    if (storeId) {
+      return products.filter(p => p.storeId === storeId);
+    }
+    return [...products];
+  },
+  getLowStockAlerts: async (storeId = null) => {
+    await delay(200);
+    let filtered = products.filter(p => p.stock <= p.minStock);
+    if (storeId) {
+      filtered = filtered.filter(p => p.storeId === storeId);
+    }
+    return filtered;
+  }
+};
